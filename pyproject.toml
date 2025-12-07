@@ -1,0 +1,42 @@
+[project]
+name = "ccss"
+version = "0.1.0"
+description = "Claude Code Session Search - TUI for searching session history"
+readme = "README.md"
+authors = [
+    { name = "Steve Antonakakis", email = "steve.antonakakis@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "textual>=0.89.1",
+    "typer>=0.15.0",
+    "pyperclip>=1.9.0",
+]
+
+[project.scripts]
+ccss = "ccss.cli:main"
+ccss-demo = "ccss.demo:main"
+
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.407",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-rerunfailures>=16.1",
+]
