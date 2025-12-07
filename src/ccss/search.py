@@ -82,6 +82,59 @@ class SearchResult:
         return f"{secs}s"
 
 
+def _extract_search_terms(query: str) -> list[str]:
+    """Extract actual search terms from a query, filtering out FTS5 operators."""
+    operators = {"and", "or", "not", "near"}
+    # Remove NEAR(...) constructs
+    query = re.sub(r"NEAR\s*\([^)]*\)", " ", query, flags=re.IGNORECASE)
+    # Extract alphanumeric tokens
+    tokens = re.findall(r"[a-zA-Z0-9]+", query)
+    return [t.lower() for t in tokens if t.lower() not in operators and len(t) >= 2]
+
+
+def _extract_snippet_context(content: str, terms: list[str], max_len: int = 100) -> str:
+    """Extract a snippet centered around the first matching term.
+
+    If a term is found, returns ~max_len chars of context around it.
+    Otherwise falls back to first max_len chars.
+    """
+    if not content:
+        return ""
+
+    content_lower = content.lower()
+
+    # Find the first matching term position
+    first_match_pos = -1
+    for term in terms:
+        # Use word boundary matching to find the term
+        match = re.search(rf"\b{re.escape(term)}\w*", content_lower)
+        if match:
+            pos = match.start()
+            if first_match_pos == -1 or pos < first_match_pos:
+                first_match_pos = pos
+
+    if first_match_pos == -1:
+        # No match found, fall back to start of content
+        return content[:max_len] + "..." if len(content) > max_len else content
+
+    # Extract context centered around the match
+    half_len = max_len // 2
+    start = max(0, first_match_pos - half_len)
+    end = min(len(content), start + max_len)
+
+    # Adjust start if we're near the end
+    if end == len(content) and end - start < max_len:
+        start = max(0, end - max_len)
+
+    snippet = content[start:end]
+
+    # Add ellipsis indicators
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(content) else ""
+
+    return f"{prefix}{snippet}{suffix}"
+
+
 def escape_fts_query(query: str) -> str:
     """Escape special FTS5 characters in a query."""
     # FTS5 special chars that need escaping: " * - ^
@@ -145,7 +198,9 @@ def search_sessions(
         return []
 
     # Search using FTS5 with external content table
-    # Note: bm25() doesn't work with external content, so we sort by recency
+    # Use subquery to get the first matching message per session
+    # Step 1: Find the MIN rowid of matching messages per session
+    # Step 2: Join back to messages to get the actual content from that row
     sql = """
         SELECT
             s.session_id,
@@ -163,22 +218,28 @@ def search_sessions(
             s.assistant_turns,
             s.tool_use_count,
             s.total_tokens_est,
-            m.content as matched_content
-        FROM messages_fts
-        JOIN messages m ON messages_fts.rowid = m.id
-        JOIN sessions s ON m.session_id = s.session_id
-        WHERE messages_fts MATCH ?
-        GROUP BY s.session_id
+            m2.content as matched_content
+        FROM (
+            SELECT m.session_id, MIN(m.id) as first_match_id
+            FROM messages_fts
+            JOIN messages m ON messages_fts.rowid = m.id
+            WHERE messages_fts MATCH ?
+            GROUP BY m.session_id
+        ) match_ids
+        JOIN messages m2 ON m2.id = match_ids.first_match_id
+        JOIN sessions s ON match_ids.session_id = s.session_id
         ORDER BY s.last_modified DESC
         LIMIT ?
     """
 
+    # Extract search terms for context extraction
+    search_terms = _extract_search_terms(query)
+
     results: list[SearchResult] = []
     try:
         for row in conn.execute(sql, (fts_query, limit)):
-            # Truncate content for snippet
             content = row["matched_content"] or ""
-            snippet = content[:100] + "..." if len(content) > 100 else content
+            snippet = _extract_snippet_context(content, search_terms)
             results.append(
                 SearchResult(
                     session_id=row["session_id"],
@@ -209,9 +270,38 @@ def search_sessions(
 def get_session_preview(
     conn: sqlite3.Connection,
     session_id: str,
+    query: str = "",
     limit: int = 20,
 ) -> list[tuple[str, str]]:
-    """Get message preview for a session. Returns list of (role, content) tuples."""
+    """Get message preview for a session, prioritizing matched messages.
+
+    When a query is provided, returns messages containing search terms.
+    Falls back to first messages if no query or no matches.
+    """
+    messages: list[tuple[str, str]] = []
+
+    # If query provided, try to find messages containing search terms
+    if query:
+        terms = _extract_search_terms(query)
+        if terms:
+            # Build LIKE conditions for each term (OR = any term matches)
+            like_conditions = " OR ".join(["content LIKE ?" for _ in terms])
+            sql = f"""
+                SELECT role, content
+                FROM messages
+                WHERE session_id = ? AND ({like_conditions})
+                ORDER BY id
+                LIMIT ?
+            """
+            params: list[str | int] = [session_id] + [f"%{t}%" for t in terms] + [limit]
+
+            for row in conn.execute(sql, params):
+                messages.append((row["role"], row["content"]))
+
+            if messages:
+                return messages
+
+    # Fallback: first messages if no query or no matches
     sql = """
         SELECT role, content
         FROM messages
@@ -220,13 +310,8 @@ def get_session_preview(
         LIMIT ?
     """
 
-    messages: list[tuple[str, str]] = []
     for row in conn.execute(sql, (session_id, limit)):
-        content = row["content"]
-        # Truncate long messages for preview
-        if len(content) > 500:
-            content = content[:500] + "..."
-        messages.append((row["role"], content))
+        messages.append((row["role"], row["content"]))
 
     return messages
 

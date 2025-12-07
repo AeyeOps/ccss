@@ -5,9 +5,9 @@ from __future__ import annotations
 import atexit
 import signal
 import sqlite3
-import subprocess
 import sys
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pyperclip
@@ -16,6 +16,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Middle, ScrollableContainer, Vertical
+from textual.content import Content
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import (
@@ -32,6 +33,7 @@ from textual.widgets import (
 from textual.widgets.input import Selection
 from textual.widgets.option_list import Option
 
+from ccss import __version__
 from ccss.indexer import (
     build_index,
     ensure_schema_current,
@@ -46,7 +48,7 @@ from ccss.settings import AVAILABLE_THEMES, load_settings, save_settings
 from ccss.themes import CUSTOM_THEMES
 
 if TYPE_CHECKING:
-    from textual.events import Click, Key
+    from textual.events import Key
 
 
 class SearchInput(Input):
@@ -188,6 +190,64 @@ class ThemeScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class AboutScreen(ModalScreen[None]):
+    """Modal screen showing application information."""
+
+    BINDINGS = [  # noqa: RUF012
+        Binding("escape", "dismiss_about", "Close"),
+        Binding("enter", "dismiss_about", "Close"),
+    ]
+
+    CSS = """
+    AboutScreen {
+        align: center middle;
+    }
+
+    #about-dialog {
+        width: 50;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #about-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #about-content {
+        text-align: center;
+    }
+
+    #about-footer {
+        text-align: center;
+        color: $text-muted;
+        margin-top: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="about-dialog"):
+            yield Label("About", id="about-title")
+            content = Text()
+            content.append("AeyeOps | Claude Code Session Search\n", style="bold")
+            content.append(f"Version {__version__}\n\n", style="dim")
+            content.append("Fast TUI for finding past\n")
+            content.append("Claude Code conversations\n\n")
+            content.append("Author: ", style="dim")
+            content.append("Steve Antonakakis\n")
+            content.append("License: ", style="dim")
+            content.append("MIT\n\n")
+            content.append("https://github.com/AeyeOps/ccss", style="underline link https://github.com/AeyeOps/ccss")
+            yield Static(content, id="about-content")
+            yield Label("[Press Escape to close]", id="about-footer")
+
+    def action_dismiss_about(self) -> None:
+        self.dismiss(None)
+
+
 class ResultItem(ListItem):
     """A list item for a search result."""
 
@@ -262,7 +322,8 @@ class HelpPanel(ScrollableContainer):
 
     DEFAULT_CSS = """
     HelpPanel {
-        width: 30%;
+        width: 40;
+        min-width: 40;
         height: 100%;
         border-left: solid $primary;
         background: $surface;
@@ -377,41 +438,14 @@ class HelpPanel(ScrollableContainer):
 
         content.update(text)
 
-    def on_click(self, event: Click) -> None:
-        """Handle right-click to copy selected text from terminal."""
-        if event.button == 3:  # Right-click
-            try:
-                # Read PRIMARY selection (terminal's selected text)
-                result = subprocess.run(
-                    ["xclip", "-selection", "primary", "-o"],
-                    capture_output=True,
-                    text=True,
-                    timeout=1,
-                )
-                selected_text = result.stdout.strip()
-
-                if selected_text:
-                    pyperclip.copy(selected_text)
-                    # Clear PRIMARY selection to deselect
-                    subprocess.run(
-                        ["xclip", "-selection", "primary"],
-                        input="",
-                        text=True,
-                        timeout=1,
-                    )
-                    self.app.notify("Copied to clipboard!", timeout=1)
-                else:
-                    self.app.notify("No text selected", timeout=1)
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                self.app.notify("Clipboard unavailable", timeout=2)
-
 
 class SyntaxPanel(ScrollableContainer):
     """Right-side panel showing FTS5 syntax reference."""
 
     DEFAULT_CSS = """
     SyntaxPanel {
-        width: 40%;
+        width: 40;
+        min-width: 40;
         height: 100%;
         border-left: solid $primary;
         background: $surface;
@@ -434,17 +468,55 @@ class SyntaxPanel(ScrollableContainer):
         yield Static(SYNTAX_REFERENCE, markup=True)
 
 
+class BrandedHeader(Header):
+    """Custom header with accent-colored AeyeOps branding."""
+
+    def format_title(self) -> Content:
+        """Format the title with AeyeOps in accent color."""
+        # Get accent color from current theme
+        accent_color = self.app.current_theme.accent
+        accent_style = f"bold {accent_color}"
+        return Content.styled("AeyeOps", accent_style) + Content(" | Claude Code Session Search")
+
+
+class BrandedFooter(Footer):
+    """Custom footer with AeyeOps branding."""
+
+    DEFAULT_CSS = """
+    BrandedFooter {
+        dock: bottom;
+    }
+
+    BrandedFooter #brand-label {
+        dock: right;
+        padding: 0 1;
+        color: $accent;
+        text-style: italic;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Label(f"AeyeOps {datetime.now().year}", id="brand-label")
+
+
 class SessionSearchApp(App[str | None]):
     """TUI application for searching Claude Code sessions."""
 
-    TITLE = "Claude Code Session Search"
+    TITLE = "AeyeOps | Claude Code Session Search"
     ENABLE_COMMAND_PALETTE = False  # Disable command palette icon in header
 
     CSS = """
+    /* Ensure Screen fills terminal */
+    Screen {
+        width: 1fr;
+        height: 1fr;
+    }
+
     /* Loading overlay - floats above everything */
     #loading-overlay {
-        width: 100%;
-        height: 100%;
+        width: 1fr;
+        height: 1fr;
         layer: overlay;
     }
 
@@ -468,6 +540,12 @@ class SessionSearchApp(App[str | None]):
         margin-top: 1;
     }
 
+    #loading-brand {
+        text-align: center;
+        color: $accent;
+        margin-top: 1;
+    }
+
     #loading-progress {
         width: 100%;
         margin: 1 0;
@@ -476,8 +554,8 @@ class SessionSearchApp(App[str | None]):
     /* Main content - fills screen, hidden during load */
     #main-content {
         display: none;
-        width: 100%;
-        height: 100%;
+        width: 1fr;
+        height: 1fr;
     }
 
     #main-content.visible {
@@ -485,13 +563,24 @@ class SessionSearchApp(App[str | None]):
     }
 
     #main-layout {
-        width: 100%;
+        width: 1fr;
         height: 1fr;
     }
 
     #left-content {
         width: 1fr;
+        min-width: 40;
         height: 100%;
+    }
+
+    #right-sidebar {
+        width: 40;
+        height: 100%;
+        display: none;
+    }
+
+    #right-sidebar.visible {
+        display: block;
     }
 
     #search-container {
@@ -540,6 +629,15 @@ class SessionSearchApp(App[str | None]):
     .result-item {
         padding: 0 1;
     }
+
+    /* Header cleanup - remove icon and disable focus expansion */
+    HeaderIcon {
+        display: none;
+    }
+
+    Header {
+        height: 1;
+    }
     """
 
     BINDINGS = [  # noqa: RUF012
@@ -561,6 +659,8 @@ class SessionSearchApp(App[str | None]):
         Binding("ctrl+k", "toggle_keys_panel", "Sidebar", priority=True),
         Binding("f1", "toggle_syntax_panel", "Syntax", priority=True),
         Binding("ctrl+t", "show_theme_menu", "Theme", priority=True),
+        # About
+        Binding("ctrl+a", "show_about", "About", priority=True),
     ]
 
     def __init__(self, initial_query: str = "") -> None:
@@ -589,10 +689,11 @@ class SessionSearchApp(App[str | None]):
             yield Label("Claude Code Session Search", id="loading-title")
             yield ProgressBar(id="loading-progress", show_eta=False)
             yield Label("Initializing...", id="loading-status")
+            yield Label(f"AeyeOps {datetime.now().year}", id="loading-brand")
 
         # Main content (hidden initially)
         with Vertical(id="main-content"):
-            yield Header(show_clock=False)
+            yield BrandedHeader(show_clock=False)
             with Horizontal(id="main-layout"):
                 with Vertical(id="left-content"):
                     with Vertical(id="search-container"):
@@ -605,9 +706,10 @@ class SessionSearchApp(App[str | None]):
                     with Vertical(id="preview-container"):
                         yield Static("Select a session to preview", id="preview-content")
                     yield Static("Select a session to see path (Enter to copy)", id="path-display")
-                yield HelpPanel(id="help-panel")
-                yield SyntaxPanel(id="syntax-panel")
-            yield Footer()
+                with Vertical(id="right-sidebar"):
+                    yield HelpPanel(id="help-panel")
+                    yield SyntaxPanel(id="syntax-panel")
+            yield BrandedFooter()
 
     def on_mount(self) -> None:
         """Initialize the app on mount."""
@@ -616,6 +718,18 @@ class SessionSearchApp(App[str | None]):
         self._app_logger.info("Application started", theme=self.theme)
         self._load_start_time = time.monotonic()
         self._start_indexing()
+
+    def on_resize(self) -> None:
+        """Handle terminal resize - force full layout recalculation."""
+        # Refresh specific containers to force size recalculation
+        try:
+            self.query_one("#main-content").refresh(layout=True)
+            self.query_one("#main-layout").refresh(layout=True)
+            self.query_one("#left-content").refresh(layout=True)
+        except Exception:
+            pass
+        # Refresh the screen itself
+        self.screen.refresh(layout=True)
 
     @work(thread=True)
     def _start_indexing(self) -> None:
@@ -826,7 +940,9 @@ class SessionSearchApp(App[str | None]):
             return
 
         preview = self.query_one("#preview-content", Static)
-        messages = get_session_preview(self.conn, result.session_id, limit=10)
+        messages = get_session_preview(
+            self.conn, result.session_id, query=self.current_query, limit=10
+        )
 
         if not messages:
             preview.update("No messages to preview")
@@ -838,9 +954,8 @@ class SessionSearchApp(App[str | None]):
             role_style = "green" if role == "user" else "cyan"
             role_label = "User" if role == "user" else "Assistant"
 
-            # Truncate and flatten content
-            content_preview = content[:300] + "..." if len(content) > 300 else content
-            content_preview = content_preview.replace("\n", " ")
+            # Flatten newlines for display
+            content_preview = content.replace("\n", " ")
 
             # Add role label with style
             text.append(f"{role_label}: ", style=role_style)
@@ -947,30 +1062,36 @@ class SessionSearchApp(App[str | None]):
         """Toggle the keys panel on the right side."""
         help_panel = self.query_one("#help-panel", HelpPanel)
         syntax_panel = self.query_one("#syntax-panel", SyntaxPanel)
+        sidebar = self.query_one("#right-sidebar")
 
         if self._active_panel == "keys":
-            # Hide keys panel
+            # Hide keys panel and sidebar
             help_panel.remove_class("visible")
+            sidebar.remove_class("visible")
             self._active_panel = None
         else:
             # Show keys panel, hide syntax if visible
             syntax_panel.remove_class("visible")
             help_panel.add_class("visible")
+            sidebar.add_class("visible")
             self._active_panel = "keys"
 
     def action_toggle_syntax_panel(self) -> None:
         """Toggle the syntax help panel on the right side."""
         help_panel = self.query_one("#help-panel", HelpPanel)
         syntax_panel = self.query_one("#syntax-panel", SyntaxPanel)
+        sidebar = self.query_one("#right-sidebar")
 
         if self._active_panel == "syntax":
-            # Hide syntax panel
+            # Hide syntax panel and sidebar
             syntax_panel.remove_class("visible")
+            sidebar.remove_class("visible")
             self._active_panel = None
         else:
             # Show syntax panel, hide keys if visible
             help_panel.remove_class("visible")
             syntax_panel.add_class("visible")
+            sidebar.add_class("visible")
             self._active_panel = "syntax"
 
     def action_show_theme_menu(self) -> None:
@@ -986,6 +1107,13 @@ class SessionSearchApp(App[str | None]):
                 self.notify(f"Theme changed to {result}", timeout=1)
 
         self.push_screen(ThemeScreen(self.theme), handle_theme_result)
+
+    def action_show_about(self) -> None:
+        """Show about dialog."""
+        # Don't open if already showing
+        if any(isinstance(s, AboutScreen) for s in self.screen_stack):
+            return
+        self.push_screen(AboutScreen())
 
     def action_handle_slash(self) -> None:
         """Handle slash key via binding - focus search or type /."""
@@ -1011,27 +1139,44 @@ class SessionSearchApp(App[str | None]):
 
 
 def reset_terminal() -> None:
-    """Reset terminal to sane state after TUI exits."""
-    # Reset escape sequences for common terminal modes
+    """Reset terminal to sane state after TUI exits.
+
+    Matches Textual's cleanup sequences to ensure complete terminal restoration.
+    Writes to stderr (where Textual writes) and stdout for complete coverage.
+    """
     reset_sequences = [
+        "\x1b[<u",      # Disable Kitty keyboard protocol (must be before alt screen exit)
         "\x1b[?1049l",  # Exit alternate screen buffer
-        "\x1b[?1000l",  # Disable mouse tracking (X10)
+        "\x1b[?1000l",  # Disable mouse tracking (SET_VT200_MOUSE)
         "\x1b[?1002l",  # Disable mouse button tracking
-        "\x1b[?1003l",  # Disable all mouse tracking
-        "\x1b[?1006l",  # Disable SGR mouse mode
-        "\x1b[?1015l",  # Disable urxvt mouse mode
+        "\x1b[?1003l",  # Disable all mouse tracking (SET_ANY_EVENT_MOUSE)
+        "\x1b[?1006l",  # Disable SGR extended mouse mode
+        "\x1b[?1015l",  # Disable urxvt mouse mode (SET_VT200_HIGHLIGHT_MOUSE)
+        "\x1b[?1016l",  # Disable mouse pixel mode
+        "\x1b[?1004l",  # Disable FocusIn/FocusOut events
+        "\x1b[?2004l",  # Disable bracketed paste mode
         "\x1b[?25h",    # Show cursor
         "\x1b[?7h",     # Enable line wrapping
         "\x1b[0m",      # Reset all attributes
     ]
-    sys.stdout.write("".join(reset_sequences))
+    reset_data = "".join(reset_sequences)
+    # Write to both stderr (where Textual writes) and stdout for complete coverage
+    sys.stderr.write(reset_data)
+    sys.stderr.flush()
+    sys.stdout.write(reset_data)
     sys.stdout.flush()
+
+
+_atexit_registered = False
 
 
 def run_app(initial_query: str = "") -> str | None:
     """Run the TUI application."""
-    # Register cleanup for any exit path
-    atexit.register(reset_terminal)
+    global _atexit_registered
+    # Register cleanup only once per process
+    if not _atexit_registered:
+        atexit.register(reset_terminal)
+        _atexit_registered = True
 
     # Handle signals that might leave terminal in bad state
     def signal_handler(signum: int, frame: object) -> None:

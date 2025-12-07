@@ -9,6 +9,7 @@ import sys
 from textual import work
 from textual.widgets import Input
 
+import ccss.app as app_module
 from ccss.app import SessionSearchApp, reset_terminal
 
 
@@ -146,8 +147,10 @@ class DemoApp(SessionSearchApp):
 
 def run_demo() -> None:
     """Run the demo app with proper terminal cleanup."""
-    # Register cleanup for any exit path
-    atexit.register(reset_terminal)
+    # Register cleanup only once per process (shared with app.py)
+    if not app_module._atexit_registered:
+        atexit.register(reset_terminal)
+        app_module._atexit_registered = True
 
     # Handle signals that might leave terminal in bad state
     def signal_handler(signum: int, frame: object) -> None:
