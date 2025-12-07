@@ -8,6 +8,38 @@ wheels/
 
 # Virtual environments
 .venv/
-.claude/audio/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing and coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Build artifacts
 .ruff_cache/
+
+# Claude Code / AI assistant files
+.claude/
+openspec/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets and credentials (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
 
