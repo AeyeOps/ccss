@@ -29,6 +29,8 @@ coverage/
 # Claude Code / AI assistant files
 .claude/
 openspec/
+CLAUDE.md
+AGENTS.md
 
 # OS files
 .DS_Store
