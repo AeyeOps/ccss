@@ -19,36 +19,16 @@ CCSS (Claude Code Session Search) is a lightweight terminal application that let
 
 ## Quick Start
 
-### Option 1: Standalone Binary (Easiest)
-
-Download the standalone binary and run it directly - no Python or dependencies required:
+Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/):
 
 ```bash
-# Download the binary
-curl -L https://github.com/aeyeops/ccss/releases/latest/download/ccss-linux -o ccss
-chmod +x ccss
-
-# Run it
-./ccss
+git clone https://github.com/AeyeOps/ccss.git
+cd ccss
+uv sync
+uv run ccss
 ```
 
-### Option 2: Install via Package Manager
-
-```bash
-# Using pipx (recommended for Python tools)
-pipx install ccss
-
-# Or using uv
-uv tool install ccss
-
-# Or using pip
-pip install ccss
-```
-
-Then just run:
-```bash
-ccss
-```
+That's it - CCSS will index your Claude Code sessions on first run.
 
 ## Features
 
@@ -59,15 +39,6 @@ ccss
 - **Theme support** with multiple built-in themes including a Claude-inspired dark theme
 - **Clipboard integration** for copying session paths
 - **Automatic indexing** with incremental updates on subsequent runs
-
-### Option 3: From Source
-
-```bash
-git clone https://github.com/aeyeops/ccss.git
-cd ccss
-uv sync
-uv run ccss
-```
 
 ## Usage
 
