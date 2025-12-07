@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyperclip
 from rich.text import Text
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Middle, ScrollableContainer, Vertical
@@ -551,15 +551,10 @@ class SessionSearchApp(App[str | None]):
         margin: 1 0;
     }
 
-    /* Main content - fills screen, hidden during load */
+    /* Main content - always in DOM, overlay hides it during load */
     #main-content {
-        display: none;
-        width: 1fr;
-        height: 1fr;
-    }
-
-    #main-content.visible {
-        display: block;
+        width: 100%;
+        height: 100%;
     }
 
     #main-layout {
@@ -719,8 +714,17 @@ class SessionSearchApp(App[str | None]):
         self._load_start_time = time.monotonic()
         self._start_indexing()
 
-    def on_resize(self) -> None:
+    def on_resize(self, event: events.Resize) -> None:
         """Handle terminal resize - force full layout recalculation."""
+        import os
+
+        # Log actual terminal size vs reported size
+        try:
+            actual = os.get_terminal_size()
+            self.log(f"Resize: reported={event.size}, actual={actual}")
+        except OSError:
+            self.log(f"Resize: reported={event.size}, actual=unknown")
+
         # Refresh specific containers to force size recalculation
         try:
             self.query_one("#main-content").refresh(layout=True)
@@ -801,11 +805,7 @@ class SessionSearchApp(App[str | None]):
         # Remove loading overlay entirely for clean layout
         loading_overlay.remove()
 
-        # Show main content
-        main_content = self.query_one("#main-content")
-        main_content.add_class("visible")
-
-        # Force screen refresh to recalculate layout
+        # Force screen refresh to recalculate layout after overlay removal
         self.refresh(layout=True)
 
         # Notify user

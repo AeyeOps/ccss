@@ -6,7 +6,49 @@
 
 > Fast terminal UI for searching Claude Code conversation history
 
-CCSS provides a keyboard-driven TUI for quickly finding and navigating your Claude Code session history. It indexes all your conversations using SQLite FTS5 full-text search, enabling instant search across thousands of sessions.
+## What is CCSS?
+
+CCSS (Claude Code Session Search) is a lightweight terminal application that lets you instantly search and browse your entire Claude Code conversation history. Whether you're looking for that snippet of code from last week or trying to find a specific discussion, CCSS gets you there in seconds.
+
+**Key highlights:**
+- Search thousands of sessions instantly with SQLite FTS5 full-text search
+- Keyboard-driven TUI - no mouse needed, vim-style navigation
+- Preview conversations with highlighted search matches
+- View session metadata: project, duration, token counts, git branch
+- Zero configuration - just run it and start searching
+
+## Quick Start
+
+### Option 1: Standalone Binary (Easiest)
+
+Download the standalone binary and run it directly - no Python or dependencies required:
+
+```bash
+# Download the binary
+curl -L https://github.com/aeyeops/ccss/releases/latest/download/ccss-linux -o ccss
+chmod +x ccss
+
+# Run it
+./ccss
+```
+
+### Option 2: Install via Package Manager
+
+```bash
+# Using pipx (recommended for Python tools)
+pipx install ccss
+
+# Or using uv
+uv tool install ccss
+
+# Or using pip
+pip install ccss
+```
+
+Then just run:
+```bash
+ccss
+```
 
 ## Features
 
@@ -18,27 +60,7 @@ CCSS provides a keyboard-driven TUI for quickly finding and navigating your Clau
 - **Clipboard integration** for copying session paths
 - **Automatic indexing** with incremental updates on subsequent runs
 
-## Installation
-
-### Using pipx (recommended)
-
-```bash
-pipx install ccss
-```
-
-### Using pip
-
-```bash
-pip install ccss
-```
-
-### Using uv
-
-```bash
-uv tool install ccss
-```
-
-### From source
+### Option 3: From Source
 
 ```bash
 git clone https://github.com/aeyeops/ccss.git
