@@ -30,6 +30,16 @@ uv run ccss
 
 That's it - CCSS will index your Claude Code sessions on first run.
 
+### Building Standalone Binary
+
+Build a standalone executable (no Python required to run):
+
+```bash
+uv run ccss-build
+```
+
+This creates `dist/ccss` (~24 MB) and installs to `/opt/bin/ccss`.
+
 ## Features
 
 - **Full-text search** across all Claude Code sessions using SQLite FTS5
