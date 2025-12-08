@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
+import shutil
 import signal
 import sqlite3
 import sys
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyperclip
 from rich.text import Text
@@ -17,6 +19,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Middle, ScrollableContainer, Vertical
 from textual.content import Content
+from textual.geometry import Size
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import (
@@ -248,6 +251,65 @@ class AboutScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class ReindexConfirmScreen(ModalScreen[bool]):
+    """Modal screen for reindex confirmation."""
+
+    BINDINGS = [  # noqa: RUF012
+        Binding("y", "confirm", "Yes"),
+        Binding("n", "cancel", "No"),
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ReindexConfirmScreen {
+        align: center middle;
+    }
+
+    #reindex-dialog {
+        width: 50;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #reindex-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #reindex-message {
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #reindex-footer {
+        text-align: center;
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, session_count: int) -> None:
+        super().__init__()
+        self.session_count = session_count
+
+    def compose(self) -> ComposeResult:
+        with Container(id="reindex-dialog"):
+            yield Label("Rebuild Index", id="reindex-title")
+            yield Label(
+                f"Reindex all {self.session_count} sessions?\nThis may take a moment.",
+                id="reindex-message",
+            )
+            yield Static("[bold green]Y[/] Yes  [bold red]N[/] No", id="reindex-footer")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class ResultItem(ListItem):
     """A list item for a search result."""
 
@@ -260,7 +322,11 @@ class ResultItem(ListItem):
         text = Text()
         text.append(f"[{self.result.display_date}] ", style="dim")
         text.append(f"{self.result.display_project}: ", style="bold")
-        text.append(self.result.snippet[:60] + "...")
+        # Truncate snippet to 200 chars for display
+        snippet = self.result.snippet
+        if len(snippet) > 200:
+            snippet = snippet[:197] + "..."
+        text.append(snippet)
         yield Static(text)
 
 
@@ -323,7 +389,6 @@ class HelpPanel(ScrollableContainer):
     DEFAULT_CSS = """
     HelpPanel {
         width: 40;
-        min-width: 40;
         height: 100%;
         border-left: solid $primary;
         background: $surface;
@@ -445,7 +510,6 @@ class SyntaxPanel(ScrollableContainer):
     DEFAULT_CSS = """
     SyntaxPanel {
         width: 40;
-        min-width: 40;
         height: 100%;
         border-left: solid $primary;
         background: $surface;
@@ -497,7 +561,7 @@ class BrandedFooter(Footer):
 
     def compose(self) -> ComposeResult:
         yield from super().compose()
-        yield Label(f"AeyeOps {datetime.now().year}", id="brand-label")
+        yield Label(f"AeyeOps {datetime.now().year} | CCSS v{__version__}", id="brand-label")
 
 
 class SessionSearchApp(App[str | None]):
@@ -505,18 +569,27 @@ class SessionSearchApp(App[str | None]):
 
     TITLE = "AeyeOps | Claude Code Session Search"
     ENABLE_COMMAND_PALETTE = False  # Disable command palette icon in header
+    LOGGING = "debug"
+    HORIZONTAL_BREAKPOINTS: ClassVar[list[tuple[int, str]]] = [(0, "-narrow"), (120, "-wide")]
+    CSS_PATH = None  # Disable external CSS files; use inlined CSS only
 
     CSS = """
-    /* Ensure Screen fills terminal */
+    /* Root screen should stretch and use vertical layout */
     Screen {
-        width: 1fr;
-        height: 1fr;
+        width: 100%;
+        height: 100%;
+        layout: vertical;
+    }
+
+    /* Root view inside screen should also stretch */
+    .view {
+        width: 100%;
+        height: 100%;
+        layout: vertical;
     }
 
     /* Loading overlay - floats above everything */
     #loading-overlay {
-        width: 1fr;
-        height: 1fr;
         layer: overlay;
     }
 
@@ -551,10 +624,16 @@ class SessionSearchApp(App[str | None]):
         margin: 1 0;
     }
 
-    /* Main content - always in DOM, overlay hides it during load */
+    /* Main content - hidden until loading complete */
     #main-content {
-        width: 100%;
-        height: 100%;
+        width: 1fr;
+        min-width: 0;
+        height: 1fr;
+        display: none;
+    }
+
+    #main-content.visible {
+        display: block;
     }
 
     #main-layout {
@@ -564,7 +643,6 @@ class SessionSearchApp(App[str | None]):
 
     #left-content {
         width: 1fr;
-        min-width: 40;
         height: 100%;
     }
 
@@ -579,8 +657,10 @@ class SessionSearchApp(App[str | None]):
     }
 
     #search-container {
+        width: 100%;
         height: auto;
         padding: 1 2;
+        min-width: 0;
     }
 
     #search-input {
@@ -588,33 +668,42 @@ class SessionSearchApp(App[str | None]):
     }
 
     #results-container {
+        width: 100%;
         border: solid $primary;
         height: 1fr;
+        overflow: hidden;
+        min-width: 0;
     }
 
     #results-list {
+        width: 100%;
         height: 100%;
         scrollbar-color: #e07a3c;
         scrollbar-size-vertical: 1;
     }
 
     #preview-container {
+        width: 100%;
         border: solid $secondary;
         height: 1fr;
         overflow-y: auto;
         scrollbar-color: #e07a3c;
         scrollbar-size-vertical: 1;
+        min-width: 0;
     }
 
     #preview-content {
+        width: 100%;
         padding: 1 2;
     }
 
     #path-display {
+        width: 100%;
         height: auto;
         padding: 0 2;
         background: $surface-darken-1;
         color: $text-muted;
+        min-width: 0;
     }
 
     #path-display.has-path {
@@ -631,7 +720,12 @@ class SessionSearchApp(App[str | None]):
     }
 
     Header {
+        width: 100%;
         height: 1;
+    }
+
+    Footer {
+        width: 100%;
     }
     """
 
@@ -656,6 +750,8 @@ class SessionSearchApp(App[str | None]):
         Binding("ctrl+t", "show_theme_menu", "Theme", priority=True),
         # About
         Binding("ctrl+a", "show_about", "About", priority=True),
+        # Reindex
+        Binding("ctrl+r", "reindex", "Reindex", priority=True),
     ]
 
     def __init__(self, initial_query: str = "") -> None:
@@ -669,6 +765,12 @@ class SessionSearchApp(App[str | None]):
         self._app_logger: AppLogger | None = None
         self._search_timer: Timer | None = None
         self._active_panel: str | None = None  # "keys" or "syntax" or None
+        self._last_polled_size: tuple[int, int] | None = None
+        self._size_poll_timer: Timer | None = None
+        # Track whether sidebar is visible to adjust grid columns
+        self._sidebar_visible: bool = False
+        # Track whether reindex is in progress (disables search)
+        self._reindex_in_progress: bool = False
 
         # Register custom themes
         for custom_theme in CUSTOM_THEMES:
@@ -681,7 +783,7 @@ class SessionSearchApp(App[str | None]):
     def compose(self) -> ComposeResult:
         # Loading overlay (visible initially)
         with Center(id="loading-overlay"), Middle(), Container(id="loading-container"):
-            yield Label("Claude Code Session Search", id="loading-title")
+            yield Label(f"Claude Code Session Search v{__version__}", id="loading-title")
             yield ProgressBar(id="loading-progress", show_eta=False)
             yield Label("Initializing...", id="loading-status")
             yield Label(f"AeyeOps {datetime.now().year}", id="loading-brand")
@@ -713,27 +815,196 @@ class SessionSearchApp(App[str | None]):
         self._app_logger.info("Application started", theme=self.theme)
         self._load_start_time = time.monotonic()
         self._start_indexing()
+        # Poll terminal size as a fallback if driver misses horizontal resize
+        self._size_poll_timer = self.set_interval(0.5, self._poll_terminal_size, pause=False)
+        # Log an initial poll immediately
+        self._poll_terminal_size()
 
     def on_resize(self, event: events.Resize) -> None:
-        """Handle terminal resize - force full layout recalculation."""
-        import os
+        """Force a full layout recalculation on resize.
 
-        # Log actual terminal size vs reported size
-        try:
-            actual = os.get_terminal_size()
-            self.log(f"Resize: reported={event.size}, actual={actual}")
-        except OSError:
-            self.log(f"Resize: reported={event.size}, actual=unknown")
+        Per Textual GitHub #3527: Resize events fire BEFORE layout is redrawn.
+        We must use call_after_refresh to defer cache invalidation.
+        """
+        self.log(
+            f"on_resize reported size={event.size.width}x{event.size.height} "
+            f"app_size={self.size.width}x{self.size.height}"
+        )
+        # Defer to after the layout pass so we don't fight Textual's own sizing
+        self.call_after_refresh(self._post_resize_refresh)
 
-        # Refresh specific containers to force size recalculation
+    def _post_resize_refresh(self) -> None:
+        """Force all widgets to recalculate dimensions on resize."""
+        # Log screen size for debugging
+        self.log(f"[resize] screen.size={self.screen.size.width}x{self.screen.size.height}")
+
+        # Force style invalidation on all widgets by walking the tree
+        def force_recalc(widget: object) -> None:
+            try:
+                # Dirty the styles to force recalculation
+                if hasattr(widget, "styles") and hasattr(widget.styles, "_updates"):
+                    widget.styles._updates += 1
+                # Clear any cached content size
+                if hasattr(widget, "_content_width"):
+                    widget._content_width = None
+                if hasattr(widget, "_content_height"):
+                    widget._content_height = None
+                # Request layout refresh
+                widget.refresh(layout=True, repaint=True)
+            except Exception:
+                pass
+
+        # Walk all widgets and force recalc
         try:
-            self.query_one("#main-content").refresh(layout=True)
-            self.query_one("#main-layout").refresh(layout=True)
-            self.query_one("#left-content").refresh(layout=True)
+            for widget in self.query("*"):
+                force_recalc(widget)
         except Exception:
             pass
-        # Refresh the screen itself
-        self.screen.refresh(layout=True)
+
+        # Force screen-level layout
+        try:
+            self.screen._layout_required = True
+            self.screen.refresh(layout=True)
+        except Exception:
+            pass
+
+        self._apply_sidebar_grid()
+
+        # Log sizes after next refresh cycle when layout is complete
+        self.call_after_refresh(self._log_widget_sizes_deferred)
+
+    def _log_widget_sizes_deferred(self) -> None:
+        """Log widget sizes after layout pass completes."""
+        try:
+            main = self.query_one("#main-content")
+            layout = self.query_one("#main-layout")
+            left = self.query_one("#left-content")
+            self.log(
+                f"[resize-final] main={main.size.width}x{main.size.height} "
+                f"layout={layout.size.width}x{layout.size.height} "
+                f"left={left.size.width}x{left.size.height}"
+            )
+        except Exception as e:
+            self.log(f"[resize-final] widget size logging failed: {e}")
+
+    def _poll_terminal_size(self) -> None:
+        """Poll terminal size and synthesize a resize if driver missed it.
+
+        Note: WSL2 has a known bug where horizontal-only resize doesn't
+        propagate SIGWINCH (Microsoft/WSL#1001). We use ioctl TIOCGWINSZ
+        which directly queries the terminal driver.
+        """
+        import fcntl
+        import struct
+        import termios
+
+        cols, rows = 0, 0
+
+        # Method 1: ioctl TIOCGWINSZ - most reliable, direct kernel query
+        # Build fd list first - fileno() may fail in test environments (pytest captures)
+        fds = []
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                fds.append(stream.fileno())
+            except Exception:
+                continue
+        for fd in fds:
+            try:
+                result = fcntl.ioctl(fd, termios.TIOCGWINSZ, b"\x00" * 8)
+                rows, cols = struct.unpack("HHHH", result)[:2]
+                if cols > 0 and rows > 0:
+                    break
+            except Exception:
+                continue
+
+        # Method 2: Fallback to shutil
+        if cols <= 0 or rows <= 0:
+            try:
+                cols, rows = shutil.get_terminal_size(fallback=(0, 0))
+            except Exception:
+                return
+        if cols <= 0 or rows <= 0:
+            return
+        current = (self.size.width, self.size.height)
+        polled = (cols, rows)
+        if self._last_polled_size != polled:
+            self._last_polled_size = polled
+            self.log(f"[size-poll] tty={cols}x{rows} app={current[0]}x{current[1]}")
+            if polled != current:
+                # Force update internal size state before posting event
+                new_size = Size(cols, rows)
+                self._size = new_size
+                if hasattr(self, "_driver") and self._driver:
+                    self._driver._size = new_size
+                self.screen._size = new_size
+                # Now post the resize event
+                self.post_message(
+                    events.Resize(
+                        size=new_size,
+                        virtual_size=new_size,
+                        container_size=new_size,
+                    )
+                )
+                # Force a full layout refresh
+                self.screen.refresh(layout=True)
+                self.call_after_refresh(self._log_widget_sizes_deferred)
+
+    def _apply_sidebar_grid(self) -> None:
+        """Refresh layout after sidebar visibility changes."""
+        try:
+            sidebar = self.query_one("#right-sidebar")
+        except Exception:
+            return
+
+        visible = sidebar.has_class("visible")
+        self._sidebar_visible = visible
+        sidebar.styles.display = "block" if visible else "none"
+        sidebar.refresh(layout=True)
+
+    def _log_layout_sizes(self) -> None:
+        """Log key widget widths/heights to debug resize behavior."""
+        def q(selector: object) -> object | None:
+            try:
+                return self.query_one(selector)
+            except Exception:
+                return None
+
+        widgets = {
+            "screen": self.screen,
+            "view": getattr(self.screen, "view", None),
+            "main-content": q("#main-content"),
+            "main-layout": q("#main-layout"),
+            "left-content": q("#left-content"),
+            "right-sidebar": q("#right-sidebar"),
+            "header": q(Header),
+            "footer": q(Footer),
+            "brand-label": q("#brand-label"),
+        }
+
+        def size_tuple(widget: object) -> str:
+            if widget is None:
+                return "n/a"
+            try:
+                box = getattr(widget, "render_box", None)
+                box_str = f"{box.width}x{box.height}" if box else "render-box:n/a"
+                size = getattr(widget, "size", None)
+                size_str = f"{size.width}x{size.height}" if size else "size:n/a"
+                return f"{size_str} ({box_str})"
+            except Exception:
+                return "err"
+
+        log_parts = [f"app-size={self.size.width}x{self.size.height}"]
+        for name, widget in widgets.items():
+            log_parts.append(f"{name}={size_tuple(widget)}")
+
+        line = " | ".join(log_parts)
+        self.log(f"[sizes] {line}")
+        if self._app_logger:
+            with contextlib.suppress(Exception):
+                self._app_logger.info(f"[sizes] {line}")
+        with contextlib.suppress(Exception):
+            sys.stderr.write(f"[sizes] {line}\n")
+            sys.stderr.flush()
 
     @work(thread=True)
     def _start_indexing(self) -> None:
@@ -805,6 +1076,12 @@ class SessionSearchApp(App[str | None]):
         # Remove loading overlay entirely for clean layout
         loading_overlay.remove()
 
+        # Show main content
+        main_content = self.query_one("#main-content")
+        main_content.add_class("visible")
+        # Ensure grid columns reflect current sidebar visibility
+        self._apply_sidebar_grid()
+
         # Force screen refresh to recalculate layout after overlay removal
         self.refresh(layout=True)
 
@@ -843,7 +1120,7 @@ class SessionSearchApp(App[str | None]):
 
     def _do_search(self, query: str) -> None:
         """Perform a search."""
-        if not self.conn:
+        if not self.conn or self._reindex_in_progress:
             return
 
         self.current_query = query.strip()
@@ -1075,6 +1352,7 @@ class SessionSearchApp(App[str | None]):
             help_panel.add_class("visible")
             sidebar.add_class("visible")
             self._active_panel = "keys"
+        self._apply_sidebar_grid()
 
     def action_toggle_syntax_panel(self) -> None:
         """Toggle the syntax help panel on the right side."""
@@ -1093,6 +1371,7 @@ class SessionSearchApp(App[str | None]):
             syntax_panel.add_class("visible")
             sidebar.add_class("visible")
             self._active_panel = "syntax"
+        self._apply_sidebar_grid()
 
     def action_show_theme_menu(self) -> None:
         """Show theme selection menu."""
@@ -1114,6 +1393,135 @@ class SessionSearchApp(App[str | None]):
         if any(isinstance(s, AboutScreen) for s in self.screen_stack):
             return
         self.push_screen(AboutScreen())
+
+    def action_reindex(self) -> None:
+        """Show reindex confirmation dialog."""
+        # Don't open if already showing or reindex in progress
+        if any(isinstance(s, ReindexConfirmScreen) for s in self.screen_stack):
+            return
+        if self._reindex_in_progress:
+            self.notify("Reindex already in progress", timeout=2)
+            return
+
+        # Get current session count for confirmation message
+        session_count = 0
+        if self.conn:
+            stats = get_index_stats(self.conn)
+            session_count = stats.get("sessions", 0)
+
+        def handle_reindex_result(confirmed: bool) -> None:
+            if confirmed:
+                self._start_reindex()
+
+        self.push_screen(ReindexConfirmScreen(session_count), handle_reindex_result)
+
+    def _start_reindex(self) -> None:
+        """Start the reindex process."""
+        # Close existing connection before reindex
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
+        # Set flag to block search during reindex
+        self._reindex_in_progress = True
+
+        # Show reindex overlay
+        self._show_reindex_overlay()
+
+        # Start background reindex
+        self._do_reindex()
+
+    def _show_reindex_overlay(self) -> None:
+        """Show the reindex progress overlay."""
+        # Build overlay structure similar to loading overlay
+        overlay_content = Container(
+            Label("Rebuilding Index", id="reindex-title"),
+            ProgressBar(id="reindex-progress", show_eta=False),
+            Label("Starting...", id="reindex-status"),
+            id="reindex-container",
+        )
+        overlay = Center(
+            Middle(overlay_content),
+            id="reindex-overlay",
+        )
+        self.mount(overlay)
+
+    @work(thread=True)
+    def _do_reindex(self) -> None:
+        """Run reindex in background thread."""
+        try:
+            conn = get_db_connection()
+            init_db(conn)
+
+            def progress_callback(current: int, total: int, message: str) -> None:
+                self.call_from_thread(self._update_reindex_progress, current, total)
+
+            build_index(conn, force=True, progress_callback=progress_callback)
+            stats = get_index_stats(conn)
+            conn.close()
+
+            self.call_from_thread(self._on_reindex_complete, stats)
+        except Exception as e:
+            self.call_from_thread(self._on_reindex_error, str(e))
+
+    def _update_reindex_progress(self, current: int, total: int) -> None:
+        """Update reindex progress UI."""
+        try:
+            progress_bar = self.query_one("#reindex-progress", ProgressBar)
+            status_label = self.query_one("#reindex-status", Label)
+            progress_bar.update(total=total, progress=current)
+            status_label.update(f"Reindexing {current} of {total} sessions...")
+        except Exception:
+            pass  # Overlay might be removed
+
+    def _on_reindex_complete(self, stats: dict[str, int]) -> None:
+        """Handle reindex completion."""
+        # Remove overlay
+        try:
+            overlay = self.query_one("#reindex-overlay")
+            overlay.remove()
+        except Exception:
+            pass
+
+        # Clear flag
+        self._reindex_in_progress = False
+
+        # Reopen connection
+        self.conn = get_db_connection()
+
+        # Notify user
+        self.notify(
+            f"Reindexed {stats['sessions']} sessions ({stats['messages']} messages)",
+            timeout=3,
+        )
+        if self._app_logger:
+            self._app_logger.info(
+                "Reindex complete", sessions=stats["sessions"], messages=stats["messages"]
+            )
+
+        # Refresh current search if any
+        if self.current_query:
+            self._do_search(self.current_query)
+
+    def _on_reindex_error(self, error_message: str) -> None:
+        """Handle reindex error."""
+        # Remove overlay
+        try:
+            overlay = self.query_one("#reindex-overlay")
+            overlay.remove()
+        except Exception:
+            pass
+
+        # Clear flag
+        self._reindex_in_progress = False
+
+        # Reopen connection
+        self.conn = get_db_connection()
+
+        # Notify user of error
+        self.notify(f"Reindex failed: {error_message}", severity="error", timeout=5)
+        if self._app_logger:
+            self._app_logger.error("Reindex failed", error=error_message)
 
     def action_handle_slash(self) -> None:
         """Handle slash key via binding - focus search or type /."""
@@ -1142,8 +1550,18 @@ def reset_terminal() -> None:
     """Reset terminal to sane state after TUI exits.
 
     Matches Textual's cleanup sequences to ensure complete terminal restoration.
-    Writes to stderr (where Textual writes) and stdout for complete coverage.
+    Writes to stderr (where Textual writes) and stdout for complete coverage when
+    running in a real TTY. Skip non-TTY streams to avoid leaking escape codes
+    into IDE logs or other captured outputs.
     """
+    targets = []
+    if sys.stderr is not None and sys.stderr.isatty():
+        targets.append(sys.stderr)
+    if sys.stdout is not None and sys.stdout.isatty():
+        targets.append(sys.stdout)
+    if not targets:
+        return
+
     reset_sequences = [
         "\x1b[<u",      # Disable Kitty keyboard protocol (must be before alt screen exit)
         "\x1b[?1049l",  # Exit alternate screen buffer
@@ -1160,23 +1578,32 @@ def reset_terminal() -> None:
         "\x1b[0m",      # Reset all attributes
     ]
     reset_data = "".join(reset_sequences)
-    # Write to both stderr (where Textual writes) and stdout for complete coverage
-    sys.stderr.write(reset_data)
-    sys.stderr.flush()
-    sys.stdout.write(reset_data)
-    sys.stdout.flush()
+    for target in targets:
+        target.write(reset_data)
+        target.flush()
 
 
 _atexit_registered = False
+_excepthook_installed = False
+
+
+def _terminal_excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> None:
+    """Global exception hook to reset terminal on any uncaught exception."""
+    reset_terminal()
+    # Call the original excepthook to print the traceback
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 
 def run_app(initial_query: str = "") -> str | None:
     """Run the TUI application."""
-    global _atexit_registered
+    global _atexit_registered, _excepthook_installed
     # Register cleanup only once per process
     if not _atexit_registered:
         atexit.register(reset_terminal)
         _atexit_registered = True
+    if not _excepthook_installed:
+        sys.excepthook = _terminal_excepthook
+        _excepthook_installed = True
 
     # Handle signals that might leave terminal in bad state
     def signal_handler(signum: int, frame: object) -> None:
@@ -1185,6 +1612,7 @@ def run_app(initial_query: str = "") -> str | None:
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)
 
     try:
         app = SessionSearchApp(initial_query=initial_query)

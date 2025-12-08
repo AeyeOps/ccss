@@ -17,6 +17,16 @@ CCSS (Claude Code Session Search) is a lightweight terminal application that let
 - View session metadata: project, duration, token counts, git branch
 - Zero configuration - just run it and start searching
 
+![CCSS Screenshot](docs/screenshot.png)
+
+The interface shows search results on the left with a conversation preview below. The **Session Details** sidebar (`Ctrl+K`) reveals rich metadata for each session:
+
+- **Session context** - project path, working directory, git branch
+- **Claude version** - which Claude version powered the conversation
+- **Usage stats** - message counts, user/assistant turns, tool calls
+- **Token estimates** - approximate token usage for the session
+- **Duration** - how long the session lasted
+
 ## Quick Start
 
 Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/):
@@ -58,16 +68,9 @@ ccss
 
 # Launch with an initial search query
 ccss "authentication"
-
-# Force a full reindex
-ccss --reindex
-
-# Show index statistics
-ccss --stats
-
-# Show version
-ccss --version
 ```
+
+Use `Ctrl+R` within the app to rebuild the index if needed.
 
 ## Keyboard Shortcuts
 
@@ -82,6 +85,7 @@ ccss --version
 | `Ctrl+K` | Toggle metadata sidebar |
 | `F1` | Toggle FTS5 syntax reference |
 | `Ctrl+T` | Change theme |
+| `Ctrl+R` | Rebuild index |
 | `Ctrl+A` | Show about dialog |
 | `Escape` / `q` | Quit |
 

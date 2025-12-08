@@ -93,46 +93,8 @@ def _extract_search_terms(query: str) -> list[str]:
 
 
 def _extract_snippet_context(content: str, terms: list[str], max_len: int = 100) -> str:
-    """Extract a snippet centered around the first matching term.
-
-    If a term is found, returns ~max_len chars of context around it.
-    Otherwise falls back to first max_len chars.
-    """
-    if not content:
-        return ""
-
-    content_lower = content.lower()
-
-    # Find the first matching term position
-    first_match_pos = -1
-    for term in terms:
-        # Use word boundary matching to find the term
-        match = re.search(rf"\b{re.escape(term)}\w*", content_lower)
-        if match:
-            pos = match.start()
-            if first_match_pos == -1 or pos < first_match_pos:
-                first_match_pos = pos
-
-    if first_match_pos == -1:
-        # No match found, fall back to start of content
-        return content[:max_len] + "..." if len(content) > max_len else content
-
-    # Extract context centered around the match
-    half_len = max_len // 2
-    start = max(0, first_match_pos - half_len)
-    end = min(len(content), start + max_len)
-
-    # Adjust start if we're near the end
-    if end == len(content) and end - start < max_len:
-        start = max(0, end - max_len)
-
-    snippet = content[start:end]
-
-    # Add ellipsis indicators
-    prefix = "..." if start > 0 else ""
-    suffix = "..." if end < len(content) else ""
-
-    return f"{prefix}{snippet}{suffix}"
+    """Return full content without truncation."""
+    return content or ""
 
 
 def escape_fts_query(query: str) -> str:
@@ -229,7 +191,6 @@ def search_sessions(
         JOIN messages m2 ON m2.id = match_ids.first_match_id
         JOIN sessions s ON match_ids.session_id = s.session_id
         ORDER BY s.last_modified DESC
-        LIMIT ?
     """
 
     # Extract search terms for context extraction
@@ -237,7 +198,7 @@ def search_sessions(
 
     results: list[SearchResult] = []
     try:
-        for row in conn.execute(sql, (fts_query, limit)):
+        for row in conn.execute(sql + " LIMIT ?", (fts_query, limit)):
             content = row["matched_content"] or ""
             snippet = _extract_snippet_context(content, search_terms)
             results.append(
@@ -339,11 +300,10 @@ def get_recent_sessions(
             total_tokens_est
         FROM sessions
         ORDER BY last_modified DESC
-        LIMIT ?
     """
 
     results: list[SearchResult] = []
-    for row in conn.execute(sql, (limit,)):
+    for row in conn.execute(sql + " LIMIT ?", (limit,)):
         # Get first message as snippet
         first_msg = conn.execute(
             "SELECT content FROM messages WHERE session_id = ? LIMIT 1",
@@ -352,8 +312,7 @@ def get_recent_sessions(
 
         snippet = ""
         if first_msg:
-            content = first_msg["content"]
-            snippet = content[:100] + "..." if len(content) > 100 else content
+            snippet = first_msg["content"] or ""
 
         results.append(
             SearchResult(

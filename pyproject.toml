@@ -16,9 +16,7 @@ dependencies = [
 
 [project.scripts]
 ccss = "ccss.cli:main"
-ccss-dev = "ccss.dev:main"
 ccss-demo = "ccss.demo:main"
-ccss-build = "ccss.scripts.build:main"
 
 [build-system]
 requires = ["uv_build>=0.8.15,<0.9.0"]

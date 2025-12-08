@@ -44,4 +44,7 @@ Thumbs.db
 *.key
 credentials.json
 secrets.json
-
+tmp/
+repomix-output.md
+repomix-output.xml
+image.png
