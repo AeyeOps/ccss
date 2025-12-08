@@ -1,4 +1,4 @@
-.PHONY: help clean build dev
+.PHONY: help clean build dev tests
 
 help:
 	@echo "Available targets:"
@@ -6,6 +6,7 @@ help:
 	@echo "  make build  - Build standalone binary (calls scripts/build_standalone.sh -> uv run ccss-build)"
 	@echo "  make dev    - Run app with local source, logs to dev-app.log (calls scripts/dev.sh)"
 	@echo "  make console-logs - Run textual console for live debugging (separate terminal)"
+	@echo "  make tests  - Run all pytest tests (search, indexer, app interactions)"
 
 clean:
 	bash scripts/clean.sh
@@ -18,3 +19,6 @@ dev:
 
 console-logs:
 	bash scripts/console_logs.sh
+
+tests:
+	uv run pytest tests/ -v

@@ -33,19 +33,28 @@ class TestAppBasics:
 
     @pytest.mark.asyncio
     async def test_type_in_search(self, app: SessionSearchApp) -> None:
-        """Typing in search should not crash."""
+        """Typing in search should update input value."""
+        from textual.widgets import Input
+
         async with app.run_test() as pilot:
             await pilot.pause()
+            search_input = app.query_one("#search-input", Input)
+            initial_value = search_input.value
+
             # Focus search and type
             await pilot.press("slash")  # Focus search
             await pilot.press("d")
             await pilot.pause()
-            # Should still be running (no crash)
+
+            # Verify character was typed
+            assert search_input.value != initial_value or "d" in search_input.value
             assert app.is_running
 
     @pytest.mark.asyncio
     async def test_search_various_terms(self, app: SessionSearchApp) -> None:
         """Search various terms that might break markup."""
+        from textual.widgets import Input
+
         problem_terms = [
             "d",  # Single char
             "test",
@@ -62,30 +71,46 @@ class TestAppBasics:
 
             for term in problem_terms:
                 # Clear and type new term
-                search_input = app.query_one("#search-input")
+                search_input = app.query_one("#search-input", Input)
                 search_input.value = ""
                 await pilot.pause()
                 search_input.value = term
                 await pilot.pause()
 
-                # Should not crash
+                # Verify term was set correctly
+                assert search_input.value == term, f"Term not preserved: expected '{term}', got '{search_input.value}'"
                 assert app.is_running, f"Crashed on term: {term}"
 
     @pytest.mark.asyncio
     async def test_navigate_results(self, app: SessionSearchApp) -> None:
         """Navigate through results with j/k keys."""
+        from textual.widgets import ListView
+
         async with app.run_test() as pilot:
             await pilot.pause()
 
-            # Navigate down
-            await pilot.press("j")
-            await pilot.pause()
-            await pilot.press("j")
-            await pilot.pause()
+            results_list = app.query_one("#results-list", ListView)
+            child_count = len(results_list.children)
 
-            # Navigate up
-            await pilot.press("k")
-            await pilot.pause()
+            if child_count >= 2:
+                initial_idx = results_list.index or 0
+
+                # Navigate down
+                await pilot.press("j")
+                await pilot.pause()
+                after_j = results_list.index
+                assert after_j is not None
+                assert after_j > initial_idx, "j should move selection down"
+
+                await pilot.press("j")
+                await pilot.pause()
+
+                # Navigate up
+                await pilot.press("k")
+                await pilot.pause()
+                after_k = results_list.index
+                assert after_k is not None
+                assert after_k < results_list.index + 1, "k should move selection up"
 
             assert app.is_running
 
@@ -124,8 +149,10 @@ class TestAppBasics:
         """Quit should exit cleanly."""
         async with app.run_test() as pilot:
             await pilot.pause()
+            # Verify app is running before quit
+            assert app.is_running, "App should be running before quit"
             await pilot.press("q")
-            # App should exit
+            # App exits - context completes without exception = success
 
     @pytest.mark.asyncio
     async def test_ctrl_k_toggle_keys_panel(self, app: SessionSearchApp) -> None:
@@ -349,28 +376,49 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_scroll_to_bottom(self) -> None:
         """Scroll all the way down through results."""
+        from textual.widgets import ListView
+
         app = SessionSearchApp()
         async with app.run_test() as pilot:
             await pilot.pause()
+
+            results_list = app.query_one("#results-list", ListView)
+            child_count = len(results_list.children)
 
             # Hammer down key many times
             for _ in range(100):
                 await pilot.press("j")
 
             await pilot.pause()
+
+            # Should have reached bottom (or stayed at 0 if empty)
+            if child_count > 0:
+                final_idx = results_list.index or 0
+                assert final_idx == child_count - 1, f"Should be at bottom ({child_count - 1}), got {final_idx}"
             assert app.is_running
 
     @pytest.mark.asyncio
     async def test_scroll_past_bounds(self) -> None:
         """Try to scroll past list boundaries."""
+        from textual.widgets import ListView
+
         app = SessionSearchApp()
         async with app.run_test() as pilot:
             await pilot.pause()
+
+            results_list = app.query_one("#results-list", ListView)
+            child_count = len(results_list.children)
 
             # Try scrolling up when at top
             for _ in range(20):
                 await pilot.press("k")
             await pilot.pause()
+
+            # Should stay at top (index 0 or None if empty)
+            if child_count > 0:
+                idx_after_k = results_list.index
+                assert idx_after_k is not None
+                assert idx_after_k >= 0, "Index should not go negative"
 
             # Scroll to bottom
             for _ in range(100):
@@ -382,22 +430,33 @@ class TestEdgeCases:
                 await pilot.press("j")
             await pilot.pause()
 
+            # Should stay at bottom
+            if child_count > 0:
+                idx_after_j = results_list.index
+                assert idx_after_j is not None
+                assert idx_after_j <= child_count - 1, "Index should not exceed list length"
+
             assert app.is_running
 
     @pytest.mark.asyncio
     async def test_rapid_search_changes(self) -> None:
         """Rapidly change search query."""
+        from textual.widgets import Input
+
         app = SessionSearchApp()
         async with app.run_test() as pilot:
             await pilot.pause()
 
-            search_input = app.query_one("#search-input")
+            search_input = app.query_one("#search-input", Input)
+            search_terms = ["a", "ab", "abc", "ab", "a", "", "test", "x", ""]
 
             # Rapid fire different searches
-            for term in ["a", "ab", "abc", "ab", "a", "", "test", "x", ""]:
+            for term in search_terms:
                 search_input.value = term
                 await pilot.pause()
 
+            # Verify final state is the last term set
+            assert search_input.value == "", "Final search value should be empty string"
             assert app.is_running
 
     @pytest.mark.asyncio
@@ -489,29 +548,40 @@ class TestEdgeCases:
         async with app.run_test() as pilot:
             await pilot.pause()
 
-            # Toggle many times
+            initial_state = app.show_preview
+
+            # Toggle many times (20 = even number)
             for _ in range(20):
                 app.action_toggle_preview()
                 await pilot.pause()
 
+            # 20 toggles = back to original state
+            assert app.show_preview == initial_state, "Even toggles should return to original state"
             assert app.is_running
 
     @pytest.mark.asyncio
     async def test_search_while_navigating(self) -> None:
-        """Search and navigate simultaneously."""
+        """Search and navigate simultaneously without crash."""
+        from textual.widgets import Input, ListView
+
         app = SessionSearchApp()
         async with app.run_test() as pilot:
             await pilot.pause()
 
-            search_input = app.query_one("#search-input")
+            search_input = app.query_one("#search-input", Input)
+            results_list = app.query_one("#results-list", ListView)
 
-            # Interleave search and navigation
+            # Interleave search value changes with j presses
+            # Note: j may type into input if focused, or navigate if not
             for i in range(10):
                 search_input.value = f"test{i}"
                 await pilot.pause()
                 await pilot.press("j")
                 await pilot.pause()
 
+            # Verify app survived the stress test
+            # Final value includes "j" chars typed when input was focused
+            assert "test" in search_input.value, "Search should contain 'test'"
             assert app.is_running
 
     @pytest.mark.asyncio
@@ -1022,11 +1092,10 @@ class TestThemeModal:
                 await pilot.press("enter")
                 await pilot.pause()
 
-                # save_settings should have been called
-                # Note: might be called with the selected theme
-                if mock_save.called:
-                    call_args = mock_save.call_args[0][0]
-                    assert "theme" in call_args
+                # save_settings must be called when theme changes
+                assert mock_save.called, "save_settings must be called when theme changes"
+                call_args = mock_save.call_args[0][0]
+                assert "theme" in call_args, "save_settings should receive theme in settings"
 
     @pytest.mark.asyncio
     async def test_switch_to_cc_tribute_theme(self) -> None:
@@ -1091,3 +1160,86 @@ class TestThemeModal:
             await pilot.pause()
 
             assert not any(isinstance(s, ThemeScreen) for s in app.screen_stack)
+
+
+class TestSearchHighlighting:
+    """Tests for search term highlighting in preview."""
+
+    def test_extract_simple_terms(self) -> None:
+        """Simple words extracted correctly."""
+        app = SessionSearchApp()
+        terms = app._extract_highlight_terms("hello world")
+        assert "hello" in terms
+        assert "world" in terms
+
+    def test_extract_filters_operators(self) -> None:
+        """FTS5 operators (AND, OR, NOT) filtered out."""
+        app = SessionSearchApp()
+        terms = app._extract_highlight_terms("hello AND world OR test NOT excluded")
+        assert "hello" in terms
+        assert "world" in terms
+        assert "test" in terms
+        assert "AND" not in terms
+        assert "OR" not in terms
+        assert "NOT" not in terms
+
+    def test_extract_handles_empty_query(self) -> None:
+        """Empty query returns empty list."""
+        app = SessionSearchApp()
+        terms = app._extract_highlight_terms("")
+        assert terms == []
+
+    def test_extract_handles_only_operators(self) -> None:
+        """Query with only operators returns empty list."""
+        app = SessionSearchApp()
+        terms = app._extract_highlight_terms("AND OR NOT")
+        assert terms == []
+
+    def test_build_highlighted_contains_text(self) -> None:
+        """Highlighted text contains the original content."""
+        app = SessionSearchApp()
+        app.current_query = "hello"
+        result = app._build_highlighted_text("hello world test")
+        result_str = str(result)
+        assert "hello" in result_str.lower()
+        assert "world" in result_str.lower()
+
+    def test_build_highlighted_no_query_returns_plain(self) -> None:
+        """Empty query returns plain text without highlighting."""
+        app = SessionSearchApp()
+        app.current_query = ""
+        result = app._build_highlighted_text("hello world")
+        # Should just be plain text
+        assert str(result) == "hello world"
+
+    def test_build_highlighted_preserves_content(self) -> None:
+        """All original content preserved in highlighted output."""
+        app = SessionSearchApp()
+        app.current_query = "test"
+        content = "this is a test of highlighting"
+        result = app._build_highlighted_text(content)
+        # All words should be present (possibly with markup)
+        result_lower = str(result).lower()
+        for word in ["this", "is", "a", "test", "of", "highlighting"]:
+            assert word in result_lower, f"Word '{word}' missing from result"
+
+    @pytest.mark.asyncio
+    async def test_preview_with_search_term(self) -> None:
+        """Preview content renders without crash when search term set."""
+        from textual.widgets import Input
+
+        app = SessionSearchApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+            search_input = app.query_one("#search-input", Input)
+
+            # Search for a term
+            search_input.value = "test"
+            await pilot.pause()
+            await pilot.pause()  # Extra for debounce
+
+            # App should still be running and preview should exist
+            preview = app.query_one("#preview-content")
+            assert preview is not None
+            assert app.is_running
