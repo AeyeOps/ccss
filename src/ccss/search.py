@@ -113,7 +113,7 @@ def build_fts_query(query: str) -> str:
     - Phrases: "foo bar" -> "foo bar" (exact)
     - Prefix: foo* -> foo*
     - Boolean: AND, OR, NOT operators
-    - Proximity: NEAR(a b, 5)
+    - Proximity: NEAR(a b, 5) or a NEAR b (converted to function form)
     - Start anchor: ^term
     - Grouping: (a OR b) AND c
     """
@@ -123,8 +123,14 @@ def build_fts_query(query: str) -> str:
 
     query_upper = query.upper()
 
-    # If query contains advanced syntax, pass through as-is
-    # User knows what they're doing
+    # Convert infix NEAR to function form: "a NEAR b" -> "NEAR(a b)"
+    # FTS5 only supports function form NEAR(a b), infix is NOT valid
+    infix_near_pattern = r"(\S+)\s+NEAR\s+(\S+)"
+    if re.search(infix_near_pattern, query, flags=re.IGNORECASE):
+        query = re.sub(infix_near_pattern, r"NEAR(\1 \2)", query, flags=re.IGNORECASE)
+        query_upper = query.upper()
+
+    # If query contains advanced syntax, pass through with normalized operators
     if (
         '"' in query
         or " AND " in query_upper
@@ -134,7 +140,12 @@ def build_fts_query(query: str) -> str:
         or query.startswith("^")
         or "(" in query
     ):
-        return query
+        # Normalize operators to uppercase (FTS5 is case-sensitive for most)
+        result = re.sub(r"\bAND\b", "AND", query, flags=re.IGNORECASE)
+        result = re.sub(r"\bOR\b", "OR", result, flags=re.IGNORECASE)
+        result = re.sub(r"\bNOT\b", "NOT", result, flags=re.IGNORECASE)
+        result = re.sub(r"\bNEAR\s*\(", "NEAR(", result, flags=re.IGNORECASE)
+        return result
 
     # Simple query: split into terms, add prefix wildcard, join with AND
     terms = query.split()

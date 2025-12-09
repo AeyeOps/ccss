@@ -1,6 +1,6 @@
 [project]
 name = "ccss"
-version = "0.2.2"
+version = "0.2.3"
 description = "Claude Code Session Search - TUI for searching session history"
 readme = "README.md"
 authors = [

@@ -1,4 +1,4 @@
-.PHONY: help clean build dev tests
+.PHONY: help clean build dev tests test-syntax
 
 help:
 	@echo "Available targets:"
@@ -7,6 +7,7 @@ help:
 	@echo "  make dev    - Run app with local source, logs to dev-app.log (calls scripts/dev.sh)"
 	@echo "  make console-logs - Run textual console for live debugging (separate terminal)"
 	@echo "  make tests  - Run all pytest tests (search, indexer, app interactions)"
+	@echo "  make test-syntax - Run FTS5 syntax validation tests only"
 
 clean:
 	bash scripts/clean.sh
@@ -22,3 +23,6 @@ console-logs:
 
 tests:
 	uv run pytest tests/ -v
+
+test-syntax:
+	uv run pytest tests/test_fts5_syntax.py -v
