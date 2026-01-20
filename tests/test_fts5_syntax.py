@@ -15,7 +15,6 @@ import pytest
 from ccss.indexer import get_db_connection, index_session, init_db
 from ccss.search import build_fts_query, search_sessions
 
-
 # Test corpus with predictable content for each syntax feature
 TEST_MESSAGES: list[dict[str, str]] = [
     # Basic terms & prefix matching
@@ -220,9 +219,7 @@ class TestBasicTerms:
         assert len(results) >= 1
         assert any("database" in r.snippet.lower() for r in results)
 
-    def test_start_anchor_matches_field_start(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_start_anchor_matches_field_start(self, indexed_corpus: sqlite3.Connection) -> None:
         """^word matches content starting with that word."""
         results = search_sessions(indexed_corpus, "^import")
         assert len(results) >= 1
@@ -230,9 +227,7 @@ class TestBasicTerms:
         for r in results:
             assert r.snippet.lower().startswith("import")
 
-    def test_start_anchor_excludes_mid_content(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_start_anchor_excludes_mid_content(self, indexed_corpus: sqlite3.Connection) -> None:
         """^word should NOT match word appearing mid-content."""
         results = search_sessions(indexed_corpus, "^import")
         # Should NOT include "the import statement failed"
@@ -254,9 +249,7 @@ class TestExactPhrases:
         assert len(results) >= 1
         assert any("file not found" in r.snippet.lower() for r in results)
 
-    def test_exact_phrase_word_order_matters(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_exact_phrase_word_order_matters(self, indexed_corpus: sqlite3.Connection) -> None:
         """Phrase requires exact word order."""
         # "not found file" should NOT match "file not found"
         results = search_sessions(indexed_corpus, '"not found file"')
@@ -286,9 +279,7 @@ class TestBooleanOperators:
             assert "authentication" in snippet_lower
             assert "successful" in snippet_lower
 
-    def test_and_excludes_partial_matches(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_and_excludes_partial_matches(self, indexed_corpus: sqlite3.Connection) -> None:
         """AND excludes documents with only one term."""
         results = search_sessions(indexed_corpus, "authentication AND nonexistent")
         assert len(results) == 0
@@ -316,9 +307,7 @@ class TestGrouping:
 
     def test_grouped_or_with_and(self, indexed_corpus: sqlite3.Connection) -> None:
         """(a OR b) AND c works correctly."""
-        results = search_sessions(
-            indexed_corpus, "(successful OR failed) AND authentication"
-        )
+        results = search_sessions(indexed_corpus, "(successful OR failed) AND authentication")
         assert len(results) >= 1
         for r in results:
             snippet_lower = r.snippet.lower()
@@ -327,9 +316,7 @@ class TestGrouping:
 
     def test_nested_grouping(self, indexed_corpus: sqlite3.Connection) -> None:
         """Nested grouping works."""
-        results = search_sessions(
-            indexed_corpus, "(authentication AND (successful OR logged))"
-        )
+        results = search_sessions(indexed_corpus, "(authentication AND (successful OR logged))")
         assert len(results) >= 1
 
 
@@ -387,9 +374,7 @@ class TestColumnFilter:
         results = search_sessions(indexed_corpus, "content:database")
         assert len(results) >= 1
 
-    def test_nonexistent_column_returns_empty(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_nonexistent_column_returns_empty(self, indexed_corpus: sqlite3.Connection) -> None:
         """Invalid column name returns empty (not error)."""
         results = search_sessions(indexed_corpus, "title:database")
         assert len(results) == 0
@@ -420,9 +405,7 @@ class TestStemming:
         found = any(expected_in_snippet in r.snippet.lower() for r in results)
         assert found, f"Expected '{expected_in_snippet}' in results for query '{query}'"
 
-    def test_stemmer_connect_connection(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_stemmer_connect_connection(self, indexed_corpus: sqlite3.Connection) -> None:
         """'connect' matches 'connection' via stemming."""
         results = search_sessions(indexed_corpus, "connect")
         assert len(results) >= 1
@@ -444,30 +427,22 @@ class TestStemming:
 class TestErrorHandling:
     """Tests for graceful failure on invalid syntax."""
 
-    def test_unbalanced_parens_returns_empty(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_unbalanced_parens_returns_empty(self, indexed_corpus: sqlite3.Connection) -> None:
         """Unbalanced parentheses return empty, not exception."""
         results = search_sessions(indexed_corpus, "(unbalanced")
         assert results == []
 
-    def test_unclosed_quote_returns_empty(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_unclosed_quote_returns_empty(self, indexed_corpus: sqlite3.Connection) -> None:
         """Unclosed quote returns empty."""
         results = search_sessions(indexed_corpus, '"unclosed')
         assert results == []
 
-    def test_empty_query_returns_empty(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_empty_query_returns_empty(self, indexed_corpus: sqlite3.Connection) -> None:
         """Empty query returns empty list."""
         results = search_sessions(indexed_corpus, "")
         assert results == []
 
-    def test_whitespace_only_returns_empty(
-        self, indexed_corpus: sqlite3.Connection
-    ) -> None:
+    def test_whitespace_only_returns_empty(self, indexed_corpus: sqlite3.Connection) -> None:
         """Whitespace-only query returns empty."""
         results = search_sessions(indexed_corpus, "   ")
         assert results == []

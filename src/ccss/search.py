@@ -101,7 +101,7 @@ def escape_fts_query(query: str) -> str:
     """Escape special FTS5 characters in a query."""
     # FTS5 special chars that need escaping: " * - ^
     # Keep quotes for phrase search, escape others
-    escaped = re.sub(r'([*\-^])', r'"\1"', query)
+    escaped = re.sub(r"([*\-^])", r'"\1"', query)
     return escaped
 
 

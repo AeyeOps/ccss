@@ -20,12 +20,32 @@ MAX_LINES = 2000
 BACKUP_COUNT = 5
 
 # Reserved logging attributes (exclude from extra kwargs)
-RESERVED_ATTRS = frozenset({
-    "name", "msg", "args", "created", "filename", "funcName", "levelname",
-    "levelno", "lineno", "module", "msecs", "pathname", "process",
-    "processName", "relativeCreated", "stack_info", "exc_info", "exc_text",
-    "thread", "threadName", "taskName", "message",
-})
+RESERVED_ATTRS = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "exc_info",
+        "exc_text",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+    }
+)
 
 
 class CompactFormatter(logging.Formatter):

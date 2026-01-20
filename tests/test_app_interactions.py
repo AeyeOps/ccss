@@ -78,7 +78,9 @@ class TestAppBasics:
                 await pilot.pause()
 
                 # Verify term was set correctly
-                assert search_input.value == term, f"Term not preserved: expected '{term}', got '{search_input.value}'"
+                assert search_input.value == term, (
+                    f"Term not preserved: expected '{term}', got '{search_input.value}'"
+                )
                 assert app.is_running, f"Crashed on term: {term}"
 
     @pytest.mark.asyncio
@@ -291,8 +293,7 @@ class TestSlashKeyBehavior:
             assert search_input.value == test_content, "Content should be preserved"
             # Cursor should be at end
             assert search_input.cursor_position == len(test_content), (
-                f"Cursor should be at end ({len(test_content)}), "
-                f"got {search_input.cursor_position}"
+                f"Cursor should be at end ({len(test_content)}), got {search_input.cursor_position}"
             )
 
     @pytest.mark.asyncio
@@ -329,7 +330,7 @@ class TestSlashKeyBehavior:
 
             # Content should be preserved (not overwritten by /)
             assert search_input.value == test_content, (
-                f"Content changed after slash: expected '{test_content}', got '{search_input.value}'"
+                f"Content changed: expected '{test_content}', got '{search_input.value}'"
             )
             # "/" should NOT have been typed into the input
             assert "/" not in search_input.value, "Slash character was typed into input"
@@ -394,7 +395,8 @@ class TestEdgeCases:
             # Should have reached bottom (or stayed at 0 if empty)
             if child_count > 0:
                 final_idx = results_list.index or 0
-                assert final_idx == child_count - 1, f"Should be at bottom ({child_count - 1}), got {final_idx}"
+                expected = child_count - 1
+                assert final_idx == expected, f"Should be at bottom ({expected}), got {final_idx}"
             assert app.is_running
 
     @pytest.mark.asyncio
@@ -562,14 +564,13 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_search_while_navigating(self) -> None:
         """Search and navigate simultaneously without crash."""
-        from textual.widgets import Input, ListView
+        from textual.widgets import Input
 
         app = SessionSearchApp()
         async with app.run_test() as pilot:
             await pilot.pause()
 
             search_input = app.query_one("#search-input", Input)
-            results_list = app.query_one("#results-list", ListView)
 
             # Interleave search value changes with j presses
             # Note: j may type into input if focused, or navigate if not
@@ -756,9 +757,7 @@ class TestThemeModal:
 
             original_theme = app.theme
             # Find index of a theme that's different
-            target_idx = next(
-                i for i, t in enumerate(AVAILABLE_THEMES) if t != original_theme
-            )
+            target_idx = next(i for i, t in enumerate(AVAILABLE_THEMES) if t != original_theme)
             # Calculate how many downs needed from current theme's position
             current_idx = AVAILABLE_THEMES.index(original_theme)
 

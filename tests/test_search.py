@@ -112,9 +112,7 @@ class TestNullFieldHandling:
     """Tests for NULL field handling."""
 
     @pytest.fixture
-    def session_without_metadata(
-        self, tmp_path: Path, temp_db: sqlite3.Connection
-    ) -> str:
+    def session_without_metadata(self, tmp_path: Path, temp_db: sqlite3.Connection) -> str:
         """Create a session file without metadata fields."""
         project_dir = tmp_path / "projects" / "-opt-empty"
         project_dir.mkdir(parents=True)

@@ -243,7 +243,10 @@ class AboutScreen(ModalScreen[None]):
             content.append("Steve Antonakakis\n")
             content.append("License: ", style="dim")
             content.append("MIT\n\n")
-            content.append("https://github.com/AeyeOps/ccss", style="underline link https://github.com/AeyeOps/ccss")
+            content.append(
+                "https://github.com/AeyeOps/ccss",
+                style="underline link https://github.com/AeyeOps/ccss",
+            )
             yield Static(content, id="about-content")
             yield Label("[Press Escape to close]", id="about-footer")
 
@@ -382,7 +385,6 @@ SYNTAX_REFERENCE = """[b]SEARCH SYNTAX[/b]
 """
 
 
-
 class HelpPanel(ScrollableContainer):
     """Right-side panel showing session metadata."""
 
@@ -441,9 +443,7 @@ class HelpPanel(ScrollableContainer):
             try:
                 from datetime import datetime
 
-                dt = datetime.fromisoformat(
-                    result.first_timestamp.replace("Z", "+00:00")
-                )
+                dt = datetime.fromisoformat(result.first_timestamp.replace("Z", "+00:00"))
                 datetime_str = dt.strftime("%b %d, %Y at %I:%M %p")
             except (ValueError, AttributeError):
                 pass
@@ -963,6 +963,7 @@ class SessionSearchApp(App[str | None]):
 
     def _log_layout_sizes(self) -> None:
         """Log key widget widths/heights to debug resize behavior."""
+
         def q(selector: object) -> object | None:
             try:
                 return self.query_one(selector)
@@ -1200,7 +1201,7 @@ class SessionSearchApp(App[str | None]):
         for match in re.finditer(pattern, content, re.IGNORECASE):
             # Add text before match
             if match.start() > last_end:
-                text.append(content[last_end:match.start()])
+                text.append(content[last_end : match.start()])
             # Add highlighted match
             text.append(match.group(), style="reverse")
             last_end = match.end()
@@ -1538,11 +1539,7 @@ class SessionSearchApp(App[str | None]):
         # Slash is handled by priority binding, not here
         # Only block single-character keys when Input is focused
         # Control combinations (ctrl+k, ctrl+t) should pass through
-        if (
-            self.focused
-            and isinstance(self.focused, Input)
-            and not event.key.startswith("ctrl+")
-        ):
+        if self.focused and isinstance(self.focused, Input) and not event.key.startswith("ctrl+"):
             return
 
 
@@ -1563,7 +1560,7 @@ def reset_terminal() -> None:
         return
 
     reset_sequences = [
-        "\x1b[<u",      # Disable Kitty keyboard protocol (must be before alt screen exit)
+        "\x1b[<u",  # Disable Kitty keyboard protocol (must be before alt screen exit)
         "\x1b[?1049l",  # Exit alternate screen buffer
         "\x1b[?1000l",  # Disable mouse tracking (SET_VT200_MOUSE)
         "\x1b[?1002l",  # Disable mouse button tracking
@@ -1573,9 +1570,9 @@ def reset_terminal() -> None:
         "\x1b[?1016l",  # Disable mouse pixel mode
         "\x1b[?1004l",  # Disable FocusIn/FocusOut events
         "\x1b[?2004l",  # Disable bracketed paste mode
-        "\x1b[?25h",    # Show cursor
-        "\x1b[?7h",     # Enable line wrapping
-        "\x1b[0m",      # Reset all attributes
+        "\x1b[?25h",  # Show cursor
+        "\x1b[?7h",  # Enable line wrapping
+        "\x1b[0m",  # Reset all attributes
     ]
     reset_data = "".join(reset_sequences)
     for target in targets:
