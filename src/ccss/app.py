@@ -9,6 +9,7 @@ import signal
 import sqlite3
 import sys
 import time
+import types
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -116,11 +117,11 @@ class SearchInput(Input):
             return
         await super()._on_key(event)
 
-    def handle_key(self, event: Key) -> bool:
+    async def handle_key(self, event: Key) -> bool:
         """Handle key input - reject "/" when flag is set."""
         if self._reject_slash and event.key == "slash":
             return True  # Consumed, don't process
-        return super().handle_key(event)
+        return await super().handle_key(event)
 
 
 class ThemeScreen(ModalScreen[str | None]):
@@ -421,8 +422,14 @@ class HelpPanel(ScrollableContainer):
     }
     """
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+    ) -> None:
+        super().__init__(name=name, id=id, classes=classes)
         self._current_result: SearchResult | None = None
 
     def compose(self) -> ComposeResult:
@@ -839,9 +846,9 @@ class SessionSearchApp(App[str | None]):
         self.log(f"[resize] screen.size={self.screen.size.width}x{self.screen.size.height}")
 
         # Force style invalidation on all widgets by walking the tree
-        def force_recalc(widget: object) -> None:
+        def force_recalc(widget: Any) -> None:
             try:
-                # Dirty the styles to force recalculation
+                # Dirty the styles to force recalculation (private API workaround)
                 if hasattr(widget, "styles") and hasattr(widget.styles, "_updates"):
                     widget.styles._updates += 1
                 # Clear any cached content size
@@ -958,15 +965,15 @@ class SessionSearchApp(App[str | None]):
 
         visible = sidebar.has_class("visible")
         self._sidebar_visible = visible
-        sidebar.styles.display = "block" if visible else "none"
+        sidebar.styles.display = "block" if visible else "none"  # type: ignore[assignment]
         sidebar.refresh(layout=True)
 
     def _log_layout_sizes(self) -> None:
         """Log key widget widths/heights to debug resize behavior."""
 
-        def q(selector: object) -> object | None:
+        def q(selector: str | type) -> Any:
             try:
-                return self.query_one(selector)
+                return self.query_one(selector)  # type: ignore[arg-type]
             except Exception:
                 return None
 
@@ -1410,7 +1417,7 @@ class SessionSearchApp(App[str | None]):
             stats = get_index_stats(self.conn)
             session_count = stats.get("sessions", 0)
 
-        def handle_reindex_result(confirmed: bool) -> None:
+        def handle_reindex_result(confirmed: bool | None) -> None:
             if confirmed:
                 self._start_reindex()
 
@@ -1584,7 +1591,9 @@ _atexit_registered = False
 _excepthook_installed = False
 
 
-def _terminal_excepthook(exc_type: type, exc_value: BaseException, exc_tb: object) -> None:
+def _terminal_excepthook(
+    exc_type: type[BaseException], exc_value: BaseException, exc_tb: types.TracebackType | None
+) -> None:
     """Global exception hook to reset terminal on any uncaught exception."""
     reset_terminal()
     # Call the original excepthook to print the traceback
