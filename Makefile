@@ -1,32 +1,22 @@
-.PHONY: help clean build dev tests test-syntax format lint typecheck check
+.PHONY: help clean validate build tests dev test-syntax console-logs
 
 help:
 	@echo "Available targets:"
-	@echo "  make build       - Format, lint, typecheck, then build standalone binary"
-	@echo "  make check       - Run format + lint + typecheck (no build)"
-	@echo "  make format      - Format code with ruff"
-	@echo "  make lint        - Lint code with ruff"
-	@echo "  make typecheck   - Type check with ty"
-	@echo "  make tests       - Run all pytest tests"
-	@echo "  make test-syntax - Run FTS5 syntax validation tests only"
-	@echo "  make dev         - Run app with local source, logs to dev-app.log"
-	@echo "  make clean       - Clean build artifacts, caches, pyc files"
+	@echo "  make validate  - Fix, format, lint, typecheck"
+	@echo "  make build     - Validate then build standalone binary"
+	@echo "  make tests     - Build then run all pytest tests"
+	@echo "  make dev       - Run app with local source"
+	@echo "  make clean     - Clean build artifacts and caches"
 
-format:
-	uv run ruff format .
-
-lint:
+validate:
 	uv run ruff check . --fix
-
-typecheck:
+	uv run ruff format .
 	uv run ty check src/
-
-check: format lint typecheck
 
 clean:
 	bash scripts/clean.sh
 
-build: check
+build: validate
 	bash scripts/build_standalone.sh
 
 dev:
