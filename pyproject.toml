@@ -1,6 +1,6 @@
 [project]
 name = "ccss"
-version = "0.2.3"
+dynamic = ["version"]
 description = "Claude Code Session Search - TUI for searching session history"
 readme = "README.md"
 authors = [
@@ -19,8 +19,8 @@ ccss = "ccss.cli:main"
 ccss-demo = "ccss.demo:main"
 
 [build-system]
-requires = ["uv_build>=0.8.15,<0.9.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
@@ -43,3 +43,6 @@ dev = [
     "pyinstaller>=6.0.0",
     "textual-dev>=1.7.0",
 ]
+
+[tool.hatch.version]
+path = "src/ccss/__init__.py"
