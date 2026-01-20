@@ -11,12 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Install path changed from `/opt/bin` to `/usr/local/bin` (FHS compliant)
 - Build backend switched from `uv_build` to `hatchling` for dynamic version support
 - Version now sourced from single location (`src/ccss/__init__.py`)
+- Replaced pyright with ruff (linting/formatting) and ty (type checking)
+- Simplified Makefile to three main targets: `validate`, `build`, `tests`
 
 ### Added
 - Auto-create install directory with sudo if missing
 - Shell detection (zsh/bash) to update appropriate rc file (`.zshrc`, `.bashrc`, or `.profile`)
 - PATH idempotency check to prevent duplicate entries
 - User notification when PATH is modified with reload instructions
+- `make validate` target runs fix → format → typecheck pipeline
 
 ## [0.2.3] - 2025-12-08
 
